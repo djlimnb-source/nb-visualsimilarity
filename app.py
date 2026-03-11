@@ -12,6 +12,7 @@ import shutil
 @st.cache_resource
 def load_model():
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    # 서버 안정성을 위해 B/32 사용
     model, preprocess = clip.load("ViT-B/32", device=device)
     return model, preprocess, device
 
@@ -39,11 +40,39 @@ def get_color_score(image):
 
 # --- 3. 데이터 설정 ---
 IMAGE_DIR = "uploaded_samples"
-if not os.path.exists(IMAGE_DIR): os.makedirs(IMAGE_DIR)
+if not os.path.exists(IMAGE_DIR): 
+    os.makedirs(IMAGE_DIR)
 
 @st.cache_data
 def build_index(image_list):
-    if not image_list: return None, None
+    if not image_list: 
+        return None, None
     ai_vecs, color_vecs = [], []
     for p in image_list:
-        img = Image.open(
+        # 이 부분이 에러가 났던 49라인 부근입니다. 괄호를 명확히 닫았습니다.
+        img = Image.open(p).convert("RGB")
+        ai_vecs.append(get_features(img))
+        color_vecs.append(get_color_score(img))
+    
+    ai_vecs = np.vstack(ai_vecs).astype('float32')
+    index = faiss.IndexFlatIP(ai_vecs.shape[1])
+    index.add(ai_vecs)
+    return index, color_vecs
+
+# --- 4. UI 레이아웃 ---
+st.set_page_config(layout="wide")
+st.title("🎨 색상 중심 전체 상품 랭킹 분석")
+
+with st.sidebar:
+    st.header("📦 DB 관리")
+    ups = st.file_uploader("상품 등록", type=['jpg','png','jpeg'], accept_multiple_files=True)
+    if st.button("서버에 등록"):
+        if ups:
+            for u in ups:
+                with open(os.path.join(IMAGE_DIR, u.name), "wb") as f:
+                    f.write(u.getbuffer())
+            st.cache_data.clear()
+            st.rerun()
+    if st.button("전체 삭제"):
+        if os.path.exists(IMAGE_DIR):
+            shutil.rmtree(IMAGE_DIR)
