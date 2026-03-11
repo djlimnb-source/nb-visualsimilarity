@@ -11,7 +11,7 @@ import shutil
 st.set_page_config(page_title="AI 상품 추천 시스템", layout="wide")
 st.title("🖼️ AI 비주얼 검색 & 상품 관리 시스템")
 
-# 배포 안정성을 위해 ViT-B/32 사용 (ViT-L/14는 서버 메모리 초과 위험)
+# 배포 안정성을 위해 ViT-B/32 사용 (무료 서버 메모리 최적화)
 @st.cache_resource
 def load_model():
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -47,31 +47,31 @@ def build_index(image_list):
     index.add(vectors)
     return index
 
-# --- 4. 사이드바: 샘플 이미지 관리 (DB 등록) ---
+# --- 4. 사이드바: 상품 DB 관리 ---
 with st.sidebar:
     st.header("📦 상품 DB 관리")
-    uploaded_samples = st.file_uploader("샘플 이미지들을 업로드하세요 (여러 장 가능)", 
+    uploaded_samples = st.file_uploader("샘플 이미지 업로드 (다중 선택 가능)", 
                                         type=['jpg', 'jpeg', 'png'], 
                                         accept_multiple_files=True)
     
-    if st.button("서버에 상품 등록/업데이트"):
+    if st.button("서버에 상품 등록"):
         if uploaded_samples:
             for uploaded_item in uploaded_samples:
                 file_path = os.path.join(IMAGE_DIR, uploaded_item.name)
                 with open(file_path, "wb") as f:
                     f.write(uploaded_item.getbuffer())
             st.success(f"{len(uploaded_samples)}개의 상품이 등록되었습니다!")
-            st.cache_data.clear() # 인덱스 갱신을 위해 캐시 삭제
+            st.cache_data.clear()
             st.rerun()
         else:
-            st.error("업로드할 파일을 먼저 선택해주세요.")
+            st.error("파일을 먼저 선택해주세요.")
 
-    if st.button("모든 샘플 삭제"):
+    if st.button("DB 초기화 (전체 삭제)"):
         if os.path.exists(IMAGE_DIR):
             shutil.rmtree(IMAGE_DIR)
             os.makedirs(IMAGE_DIR)
             st.cache_data.clear()
-            st.warning("DB가 초기화되었습니다.")
+            st.warning("모든 데이터가 삭제되었습니다.")
             st.rerun()
 
 # --- 5. 메인 화면: 검색 및 결과 ---
@@ -79,15 +79,35 @@ all_files = [os.path.join(IMAGE_DIR, f) for f in os.listdir(IMAGE_DIR)
              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
 
 if not all_files:
-    st.info("👈 왼쪽 사이드바에서 비교할 상품 샘플들을 먼저 업로드해주세요.")
+    st.info("👈 왼쪽 사이드바에서 비교할 상품들을 먼저 업로드해 주세요.")
 else:
     st.write(f"현재 등록된 상품 수: **{len(all_files)}개**")
     
     with st.spinner("이미지 분석 중..."):
         index = build_index(all_files)
 
-st.divider()
+    st.divider()
     
-    # 🔎 기준 이미지 업로드 (92라인 근처)
-    st.subheader("🔎 검색할 이미지 올리기") 
-    search_file = st.file_uploader("이 이미지와 가장 닮은 상품은?", type=['jpg', 'jpeg', 'png'], key="search")
+    st.subheader("🔎 검색할 이미지 올리기")
+    search_file = st.file_uploader("이 이미지와 닮은 상품 찾기", type=['jpg', 'jpeg', 'png'], key="search")
+
+    if search_file:
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.write("**내가 올린 이미지**")
+            query_img = Image.open(search_file).convert("RGB")
+            st.image(query_img, use_container_width=True)
+
+        with col2:
+            st.write("**추천 결과**")
+            query_vec = get_vector(query_img).astype('float32')
+            
+            k = min(len(all_files), 4)
+            distances, indices = index.search(query_vec, k)
+            
+            res_cols = st.columns(k)
+            for i, idx in enumerate(indices[0]):
+                with res_cols[i]:
+                    matched_img = Image.open(all_files[idx])
+                    st.image(matched_img, caption=f"순위 {i+1} ({distances[0][i]:.2f})", use_container_width=True)
