@@ -86,7 +86,8 @@ else:
     with st.spinner("이미지 분석 중..."):
         index = build_index(all_files)
 
-    st.divider()
+st.divider()
     
-    # 기준 이미지 업로드
-    st.subheader("🔎
+    # 🔎 기준 이미지 업로드 (92라인 근처)
+    st.subheader("🔎 검색할 이미지 올리기") 
+    search_file = st.file_uploader("이 이미지와 가장 닮은 상품은?", type=['jpg', 'jpeg', 'png'], key="search")
