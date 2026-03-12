@@ -8,3 +8,5 @@ git+https://github.com/openai/CLIP.git
 faiss-cpu
 Pillow
 opencv-python-headless
+rembg
+onnxruntime
